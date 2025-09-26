@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Решение задач</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .step {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border-left: 4px solid #4facfe;
+        }
+        
+        .step-number {
+            display: inline-block;
+            background: #4facfe;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .step-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+        
+        .formula {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border: 1px solid #e9ecef;
+            overflow-x: auto;
+        }
+        
+        .explanation {
+            color: #495057;
+            line-height: 1.6;
+            margin-top: 10px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #6c757d;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4facfe;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .final-answer {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .final-answer h3 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .final-formula {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧮 Решение задачи</h1>
+            <div class="subtitle">Поэтапное объяснение с формулами</div>
+        </div>
+        
+        <div class="content" id="content">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Загружаем решение...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Инициализация Telegram Web App
+        const tg = window.Telegram.WebApp;
+        if (tg) {
+            tg.expand();
+            tg.enableClosingConfirmation();
+        }
+        
+        // Получаем параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const encodedData = urlParams.get('data');
+        
+        function displaySolution(solutionData) {
+            const content = document.getElementById('content');
+            
+            if (!solutionData) {
+                content.innerHTML = '<div>❌ Данные не получены</div>';
+                return;
+            }
+            
+            let html = '';
+            
+            // Отображаем шаги решения
+            if (solutionData.steps && solutionData.steps.length > 0) {
+                solutionData.steps.forEach((step, index) => {
+                    html += `
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">${index + 1}</span>
+                                ${step.title || 'Шаг решения'}
+                            </div>
+                            ${step.formula ? `<div class="formula">\\(${step.formula}\\)</div>` : ''}
+                            ${step.explanation ? `<div class="explanation">${step.explanation}</div>` : ''}
+                        </div>
+                    `;
+                });
+            }
+            
+            // Добавляем финальный ответ
+            if (solutionData.finalAnswer) {
+                html += `
+                    <div class="final-answer">
+                        <h3>🎯 Ответ</h3>
+                        <div class="final-formula">\\(${solutionData.finalAnswer}\\)</div>
+                        <div>${solutionData.finalExplanation || 'Задача успешно решена!'}</div>
+                    </div>
+                `;
+            }
+            
+            if (!html) {
+                html = '<div>❌ Нет данных для отображения</div>';
+            }
+            
+            content.innerHTML = html;
+            
+            // Обновляем MathJax для рендеринга формул
+            if (window.MathJax) {
+                MathJax.typesetPromise();
+            }
+        }
+        
+        // Загружаем данные
+        if (encodedData) {
+            try {
+                const solutionData = JSON.parse(decodeURIComponent(encodedData));
+                displaySolution(solutionData);
+            } catch (e) {
+                document.getElementById('content').innerHTML = '<div>❌ Ошибка загрузки данных решения</div>';
+            }
+        } else {
+            // Тестовые данные для демонстрации
+            const testData = {
+                steps: [
+                    {
+                        "title": "Анализ условия задачи",
+                        "explanation": "Рассмотрим данное квадратное уравнение"
+                    },
+                    {
+                        "title": "Находим дискриминант", 
+                        "formula": "D = b^2 - 4ac = 5^2 - 4 \\cdot 2 \\cdot 3 = 25 - 24 = 1",
+                        "explanation": "Вычисляем дискриминант по формуле"
+                    },
+                    {
+                        "title": "Находим корни уравнения",
+                        "formula": "x_{1,2} = \\frac{-b \\pm \\sqrt{D}}{2a} = \\frac{-5 \\pm 1}{4}",
+                        "explanation": "Используем формулу корней квадратного уравнения"
+                    }
+                ],
+                finalAnswer: "x_1 = -1,\\ x_2 = -1.5",
+                finalExplanation: "Уравнение имеет два действительных корня"
+            };
+            displaySolution(testData);
+        }
+    </script>
+</body>
+</html>
