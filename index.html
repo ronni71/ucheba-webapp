@@ -130,6 +130,17 @@
             font-weight: bold;
             margin: 15px 0;
         }
+        
+        .debug-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 12px;
+            color: #6c757d;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
@@ -155,22 +166,39 @@
             tg.enableClosingConfirmation();
         }
         
-        // Получаем параметры из URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const encodedData = urlParams.get('data');
+        // Функция для получения параметров URL
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
         
         function displaySolution(solutionData) {
             const content = document.getElementById('content');
             
             if (!solutionData) {
-                content.innerHTML = '<div>❌ Данные не получены</div>';
+                content.innerHTML = `
+                    <div class="debug-info">
+                        <strong>❌ Данные не получены</strong><br>
+                        URL параметры: ${window.location.search}<br>
+                        data параметр: ${getUrlParameter('data') ? 'присутствует' : 'отсутствует'}
+                    </div>
+                `;
                 return;
             }
             
-            let html = '';
+            // Отладочная информация
+            let debugHtml = `
+                <div class="debug-info">
+                    <strong>Отладочная информация:</strong><br>
+                    Тип данных: ${typeof solutionData}<br>
+                    Ключи: ${solutionData ? Object.keys(solutionData).join(', ') : 'нет'}
+                </div>
+            `;
+            
+            let html = debugHtml;
             
             // Отображаем шаги решения
-            if (solutionData.steps && solutionData.steps.length > 0) {
+            if (solutionData.steps && Array.isArray(solutionData.steps) && solutionData.steps.length > 0) {
                 solutionData.steps.forEach((step, index) => {
                     html += `
                         <div class="step">
@@ -183,6 +211,8 @@
                         </div>
                     `;
                 });
+            } else {
+                html += `<div class="step">Нет шагов решения</div>`;
             }
             
             // Добавляем финальный ответ
@@ -196,10 +226,6 @@
                 `;
             }
             
-            if (!html) {
-                html = '<div>❌ Нет данных для отображения</div>';
-            }
-            
             content.innerHTML = html;
             
             // Обновляем MathJax для рендеринга формул
@@ -208,38 +234,35 @@
             }
         }
         
-        // Загружаем данные
-        if (encodedData) {
+        // Основная функция загрузки
+        function loadSolution() {
+            const encodedData = getUrlParameter('data');
+            
+            if (!encodedData) {
+                displaySolution(null);
+                return;
+            }
+            
             try {
+                console.log("Закодированные данные:", encodedData);
                 const solutionData = JSON.parse(decodeURIComponent(encodedData));
+                console.log("Раскодированные данные:", solutionData);
                 displaySolution(solutionData);
             } catch (e) {
-                document.getElementById('content').innerHTML = '<div>❌ Ошибка загрузки данных решения</div>';
+                console.error("Ошибка парсинга:", e);
+                document.getElementById('content').innerHTML = `
+                    <div class="debug-info">
+                        <strong>❌ Ошибка загрузки данных решения</strong><br>
+                        Ошибка: ${e.message}<br>
+                        Данные: ${encodedData}<br>
+                        Длина данных: ${encodedData.length} символов
+                    </div>
+                `;
             }
-        } else {
-            // Тестовые данные для демонстрации
-            const testData = {
-                steps: [
-                    {
-                        "title": "Анализ условия задачи",
-                        "explanation": "Рассмотрим данное квадратное уравнение"
-                    },
-                    {
-                        "title": "Находим дискриминант", 
-                        "formula": "D = b^2 - 4ac = 5^2 - 4 \\cdot 2 \\cdot 3 = 25 - 24 = 1",
-                        "explanation": "Вычисляем дискриминант по формуле"
-                    },
-                    {
-                        "title": "Находим корни уравнения",
-                        "formula": "x_{1,2} = \\frac{-b \\pm \\sqrt{D}}{2a} = \\frac{-5 \\pm 1}{4}",
-                        "explanation": "Используем формулу корней квадратного уравнения"
-                    }
-                ],
-                finalAnswer: "x_1 = -1,\\ x_2 = -1.5",
-                finalExplanation: "Уравнение имеет два действительных корня"
-            };
-            displaySolution(testData);
         }
+        
+        // Загружаем данные при старте
+        document.addEventListener('DOMContentLoaded', loadSolution);
     </script>
 </body>
 </html>
