@@ -167,6 +167,16 @@
             transform: translateY(-2px);
         }
         
+        .proxy-status {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin: 10px 0;
+            font-size: 14px;
+            color: #636e72;
+            border-left: 3px solid #4facfe;
+        }
+        
         @media (max-width: 600px) {
             body {
                 padding: 10px;
@@ -225,8 +235,19 @@
         const solutionElement = document.getElementById('solution');
         const errorMessageElement = document.getElementById('error-message');
         
-        // API базовый URL - можно настроить для продакшена
-        const API_BASE_URL = 'http://72.56.65.9:8080'; // Замените на ваш сервер в продакшене
+        // Список CORS прокси для обхода Mixed Content
+        const PROXY_SERVERS = [
+            'https://cors-anywhere.herokuapp.com',
+            'https://api.codetabs.com/v1/proxy?quest=',
+            'https://corsproxy.io/?',
+            'https://proxy.cors.sh/'
+        ];
+        
+        // Базовый URL API
+        const API_BASE_URL = 'http://72.56.65.9:8080';
+        
+        // Текущий используемый прокси
+        let currentProxyIndex = 0;
         
         // Функция показа ошибки
         function showError(message) {
@@ -253,7 +274,8 @@
         // Функция повторной попытки
         function retryLoading() {
             showLoading();
-            setTimeout(loadSolution, 1000); // Задержка перед повторной попыткой
+            currentProxyIndex = 0; // Сбрасываем индекс прокси
+            setTimeout(loadSolution, 1000);
         }
         
         // Функция отображения решения
@@ -264,6 +286,13 @@
             }
             
             let html = '';
+            
+            // Добавляем информацию о способе подключения
+            const proxyInfo = currentProxyIndex === -1 ? 
+                '📡 Прямое подключение' : 
+                `🔗 Прокси: ${PROXY_SERVERS[currentProxyIndex].split('/')[2] || 'Custom'}`;
+            
+            html += `<div class="proxy-status">${proxyInfo}</div>`;
             
             // Отображаем шаги решения
             const steps = solutionData.steps || [];
@@ -307,61 +336,102 @@
             showSolution();
         }
         
-        // Основная функция загрузки решения
+        // Функция получения URL для запроса
+        function getRequestUrl(solutionId) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const customApiUrl = urlParams.get('api_url');
+            
+            if (customApiUrl) {
+                return `${customApiUrl}/api/solution/${solutionId}`;
+            }
+            
+            // Если используем прокси
+            if (currentProxyIndex >= 0 && currentProxyIndex < PROXY_SERVERS.length) {
+                const proxy = PROXY_SERVERS[currentProxyIndex];
+                const targetUrl = `${API_BASE_URL}/api/solution/${solutionId}`;
+                
+                if (proxy.includes('?')) {
+                    return `${proxy}${encodeURIComponent(targetUrl)}`;
+                } else {
+                    return `${proxy}/${targetUrl}`;
+                }
+            }
+            
+            // Прямое подключение (последняя попытка)
+            return `${API_BASE_URL}/api/solution/${solutionId}`;
+        }
+        
+        // Основная функция загрузки решения с использованием прокси
         async function loadSolution() {
             const urlParams = new URLSearchParams(window.location.search);
             const solutionId = urlParams.get('id');
             
             if (!solutionId) {
-                showError('ID решения не найден в URL');
+                showError('ID решения не найден');
                 return;
             }
             
             try {
-                // Определяем URL API
-                let apiUrl;
-                const customApiUrl = urlParams.get('api_url');
+                const requestUrl = getRequestUrl(solutionId);
+                console.log(`🔄 Попытка ${currentProxyIndex + 1}: ${requestUrl}`);
                 
-                if (customApiUrl) {
-                    apiUrl = `${customApiUrl}/api/solution/${solutionId}`;
-                } else {
-                    apiUrl = `${API_BASE_URL}/api/solution/${solutionId}`;
-                }
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
                 
-                console.log('Загрузка решения из:', apiUrl);
-                
-                const response = await fetch(apiUrl, {
+                const response = await fetch(requestUrl, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
-                    // Добавляем таймаут для запроса
-                    signal: AbortSignal.timeout(10000) // 10 секунд таймаут
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (response.ok) {
                     const solutionData = await response.json();
-                    console.log('Решение получено:', solutionData);
+                    console.log('✅ Данные получены через прокси');
                     displaySolution(solutionData);
                 } else {
-                    if (response.status === 404) {
-                        showError('Решение не найдено или устарело');
-                    } else if (response.status === 500) {
-                        showError('Ошибка на сервере. Попробуйте позже');
-                    } else {
-                        showError(`Ошибка загрузки: ${response.status} ${response.statusText}`);
-                    }
+                    throw new Error(`HTTP error: ${response.status}`);
                 }
                 
             } catch (error) {
-                console.error('Ошибка загрузки данных:', error);
+                console.error(`💥 Ошибка с прокси ${currentProxyIndex}:`, error);
                 
-                if (error.name === 'TimeoutError') {
-                    showError('Превышено время ожидания ответа от сервера');
-                } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    showError('Не удалось подключиться к серверу. Проверьте подключение к интернету');
+                // Пробуем следующий прокси или прямой запрос
+                currentProxyIndex++;
+                
+                if (currentProxyIndex < PROXY_SERVERS.length) {
+                    // Пробуем следующий прокси
+                    console.log('🔄 Пробуем следующий прокси...');
+                    setTimeout(() => loadSolution(), 500);
+                } else if (currentProxyIndex === PROXY_SERVERS.length) {
+                    // Все прокси провалились, пробуем прямой запрос
+                    currentProxyIndex = -1; // Флаг для прямого подключения
+                    console.log('🔄 Пробуем прямое подключение...');
+                    
+                    try {
+                        const directUrl = `${API_BASE_URL}/api/solution/${solutionId}`;
+                        const response = await fetch(directUrl, {
+                            signal: AbortSignal.timeout(5000)
+                        });
+                        
+                        if (response.ok) {
+                            const solutionData = await response.json();
+                            console.log('✅ Данные получены напрямую');
+                            displaySolution(solutionData);
+                        } else {
+                            throw new Error('Прямое подключение не удалось');
+                        }
+                    } catch (directError) {
+                        console.error('💥 Прямое подключение провалилось:', directError);
+                        showError('Не удалось подключиться к серверу. Проблема с CORS/Mixed Content.');
+                    }
                 } else {
-                    showError('Ошибка загрузки данных с сервера');
+                    // Все попытки исчерпаны
+                    showError('Не удалось загрузить решение. Все методы подключения провалились.');
                 }
             }
         }
@@ -390,6 +460,7 @@
                 finalExplanation: "Уравнение имеет один корень: -1"
             };
             
+            currentProxyIndex = -1; // Прямое подключение для теста
             displaySolution(mockSolution);
         }
         
