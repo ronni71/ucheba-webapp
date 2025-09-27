@@ -167,14 +167,15 @@
             transform: translateY(-2px);
         }
         
-        .proxy-status {
+        .debug-info {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 10px 15px;
             margin: 10px 0;
-            font-size: 14px;
+            font-size: 12px;
             color: #636e72;
-            border-left: 3px solid #4facfe;
+            border-left: 3px solid #00b894;
+            font-family: 'Courier New', monospace;
         }
         
         @media (max-width: 600px) {
@@ -237,8 +238,8 @@
         const errorMessageElement = document.getElementById('error-message');
         const errorDetailsElement = document.getElementById('error-details');
         
-        // Базовый URL API - используем HTTPS если возможно
-        const API_BASE_URL = 'https://72.56.65.9:8080'; // Пробуем HTTPS
+        // Базовый URL API
+        const API_BASE_URL = 'http://72.56.65.9:8080';
         
         // Функция показа ошибки
         function showError(message, details = '') {
@@ -269,27 +270,47 @@
             setTimeout(loadSolution, 1000);
         }
         
-        // Функция отображения решения
+        // Функция отображения решения с дебаг информацией
         function displaySolution(solutionData) {
             if (!solutionData) {
                 showError('Данные решения пусты');
                 return;
             }
             
+            // Дебаг информация
+            console.log('📊 Полученные данные:', solutionData);
+            console.log('🔍 Структура данных:');
+            console.log('- steps:', solutionData.steps ? solutionData.steps.length : 0);
+            console.log('- finalAnswer:', solutionData.finalAnswer);
+            console.log('- finalExplanation:', solutionData.finalExplanation);
+            
             let html = '';
+            
+            // Добавляем дебаг информацию (можно убрать в продакшене)
+            html += `
+                <div class="debug-info">
+                    <strong>Отладка:</strong> 
+                    Шагов: ${solutionData.steps ? solutionData.steps.length : 0}, 
+                    Ответ: "${solutionData.finalAnswer || 'нет'}"
+                </div>
+            `;
             
             // Отображаем шаги решения
             const steps = solutionData.steps || [];
             if (steps.length > 0) {
                 steps.forEach((step, index) => {
-                    html += `
-                        <div class="step">
-                            <div class="step-title">${step.title || `Шаг ${index + 1}`}</div>
-                            ${step.formula ? `<div class="step-formula">${step.formula}</div>` : ''}
-                            <div class="step-explanation">${step.explanation || ''}</div>
-                        </div>
-                    `;
+                    if (step && typeof step === 'object') {
+                        html += `
+                            <div class="step">
+                                <div class="step-title">${step.title || `Шаг ${index + 1}`}</div>
+                                ${step.formula ? `<div class="step-formula">${step.formula}</div>` : ''}
+                                <div class="step-explanation">${step.explanation || ''}</div>
+                            </div>
+                        `;
+                    }
                 });
+            } else {
+                html += `<div class="step"><div class="step-explanation">Нет шагов решения</div></div>`;
             }
             
             // Отображаем финальный ответ
@@ -358,108 +379,65 @@
                 return;
             }
             
-            // Сначала пробуем HTTPS
-            let apiUrl = `${API_BASE_URL}/api/solution/${solutionId}`;
+            console.log('🔍 Загружаем решение ID:', solutionId);
             
             try {
-                console.log('🔄 Пробуем HTTPS подключение:', apiUrl);
+                const apiUrl = `${API_BASE_URL}/api/solution/${solutionId}`;
+                console.log('🔄 Запрос к API:', apiUrl);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
                 
                 const response = await fetch(apiUrl, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    mode: 'cors',
-                    credentials: 'omit'
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (response.ok) {
                     const solutionData = await response.json();
-                    console.log('✅ Данные получены через HTTPS');
+                    console.log('✅ Данные получены успешно');
                     displaySolution(solutionData);
-                    return;
                 } else {
-                    throw new Error(`HTTPS error: ${response.status}`);
-                }
-                
-            } catch (httpsError) {
-                console.log('💥 HTTPS не работает, пробуем HTTP с обходом CORS:', httpsError);
-                
-                // Пробуем HTTP с разными методами обхода CORS
-                const httpUrl = `http://72.56.65.9:8080/api/solution/${solutionId}`;
-                
-                // Метод 1: Пробуем через proxy.cors.sh
-                try {
-                    const proxyUrl = `https://proxy.cors.sh/${httpUrl}`;
-                    console.log('🔄 Пробуем cors.sh proxy:', proxyUrl);
-                    
-                    const response = await fetch(proxyUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-cors-api-key': 'temp_0d6d62e6c8c04c6d8f6d8c6a4f8c6d8a' // временный ключ
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const solutionData = await response.json();
-                        console.log('✅ Данные получены через cors.sh');
-                        displaySolution(solutionData);
-                        return;
+                    if (response.status === 404) {
+                        showError('Решение не найдено', 'ID мог устареть или быть удаленным');
+                    } else {
+                        showError(`Ошибка сервера: ${response.status}`, 'Попробуйте позже');
                     }
-                } catch (proxyError) {
-                    console.log('💥 cors.sh не сработал:', proxyError);
                 }
                 
-                // Метод 2: Пробуем JSONP (если сервер поддерживает)
-                try {
-                    console.log('🔄 Пробуем JSONP метод');
-                    await new Promise((resolve, reject) => {
-                        const callbackName = 'jsonp_callback_' + Date.now();
-                        window[callbackName] = function(data) {
-                            delete window[callbackName];
-                            document.body.removeChild(script);
-                            displaySolution(data);
-                            resolve();
-                        };
-                        
-                        const script = document.createElement('script');
-                        script.src = `${httpUrl}?callback=${callbackName}`;
-                        script.onerror = reject;
-                        document.body.appendChild(script);
-                        
-                        // Таймаут для JSONP
-                        setTimeout(() => reject(new Error('JSONP timeout')), 5000);
-                    });
-                    return;
-                } catch (jsonpError) {
-                    console.log('💥 JSONP не сработал:', jsonpError);
+            } catch (error) {
+                console.error('💥 Ошибка загрузки:', error);
+                
+                if (error.name === 'AbortError') {
+                    showError('Превышено время ожидания', 'Сервер не ответил за 10 секунд');
+                } else if (error.name === 'TypeError') {
+                    showError('Проблема с подключением', 'Проверьте интернет соединение');
+                } else {
+                    showError('Неизвестная ошибка', error.message);
                 }
                 
-                // Метод 3: Пробуем напрямую с no-cors (только для проверки доступности)
-                try {
-                    console.log('🔄 Проверяем доступность сервера');
-                    const testResponse = await fetch(httpUrl, {
-                        method: 'HEAD',
-                        mode: 'no-cors'
-                    });
-                    console.log('✅ Сервер доступен, но CORS блокирует запрос');
-                } catch (testError) {
-                    console.log('💥 Сервер недоступен:', testError);
-                }
-                
-                // Все методы не сработали - используем тестовые данные
-                console.log('🔄 Все методы подключения провалились, используем тестовые данные');
-                showError(
-                    'Не удалось подключиться к серверу решения', 
-                    'Сервер временно недоступен. Показаны тестовые данные для демонстрации.'
-                );
-                testWithMockData();
+                // Для отладки показываем тестовые данные
+                console.log('🔄 Показываем тестовые данные для отладки');
+                setTimeout(() => testWithMockData(), 1000);
             }
         }
         
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
+            // Проверяем, есть ли ID в URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const solutionId = urlParams.get('id');
+            
+            if (!solutionId) {
+                showError('ID решения не указан', 'Проверьте ссылку');
+                return;
+            }
+            
             loadSolution();
             
             // Добавляем обработчик для обновления при возврате в приложение
